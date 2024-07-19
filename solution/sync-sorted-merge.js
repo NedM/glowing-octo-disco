@@ -29,6 +29,7 @@ const logsRemain = (logObjs) => {
 
 module.exports = (logSources, printer) => {
   // Create an array holding the source and next element for each log source
+  // Use array for O(1) time access with index
   // Space complexity is O(n) where n is number of log sources
   const logsObjArray = logSources.map((source) => {
     return {
@@ -42,13 +43,17 @@ module.exports = (logSources, printer) => {
   while(logsRemain(logsObjArray)) {
     const nextLogIndex = getIndexOfNextLogObject(logsObjArray);
 
-    if (!nextLogIndex) {
+    if (nextLogIndex === null) {
       break;
     }
 
     printer.print(logsObjArray[nextLogIndex].nextLog);
+
+    // Update next log at the index
     logsObjArray[nextLogIndex].nextLog = logsObjArray[nextLogIndex].source.pop();
   }
+
+  printer.done();
 
   return console.log("Sync sort complete.");
 };
