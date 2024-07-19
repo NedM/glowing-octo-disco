@@ -64,11 +64,10 @@ function drainAsynchronousLogs(sourceCount) {
 }
 
 function runSolutions(sourceCount) {
-  // return drainSynchronousLogs(sourceCount).then(() => {
-  //   return drainAsynchronousLogs(sourceCount);
-  // });
-  return drainAsynchronousLogs(sourceCount);
+  return drainSynchronousLogs(sourceCount).then(() => {
+    return drainAsynchronousLogs(sourceCount);
+  });
 }
 
 // Adjust this input to see how your solutions perform under various loads.
-runSolutions(1000);
+runSolutions(10);

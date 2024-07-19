@@ -21,10 +21,6 @@ const getIndexOfNextLogObject = (logObjs) => {
   return nextIndex;
 }
 
-const logsRemain = (logObjs) => {
-  return logObjs.some((obj) => !!obj.nextLog);
-}
-
 // Print all entries, across all of the sources, in chronological order.
 
 module.exports = (logSources, printer) => {
@@ -40,7 +36,7 @@ module.exports = (logSources, printer) => {
 
   // Operate while logs remain to be printed
   // This loop is O(m) time complexity where m is the number of messages across all sources
-  while(logsRemain(logsObjArray)) {
+  while (true) {
     const nextLogIndex = getIndexOfNextLogObject(logsObjArray);
 
     if (nextLogIndex === null) {

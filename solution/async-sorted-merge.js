@@ -1,23 +1,8 @@
 "use strict";
 
-const MAX_NUM_LOGS_TO_READ_AHEAD = 5
-
 // Print all entries, across all of the *async* sources, in chronological order.
-const fillNextLogsArray = (source, nextLogsArray) => {
-  if(!source) { throw new Error('Log source not valid') }
 
-  while (nextLogsArray.length < MAX_NUM_LOGS_TO_READ_AHEAD) {
-    // Call popAsync to request log message but do not block waiting for
-    // promise to be fulfilled.
-
-    // ERROR: This strategy appears to trigger a race condition!
-    nextLogsArray.push(source.popAsync());
-  }
-
-  return nextLogsArray;
-}
-
-const getIndexOfNextLogObject = (logObjs) => {
+const getIndexOfNextLogObject = (nextLogs) => {
   let nextIndex = null
 
   /*
@@ -27,10 +12,10 @@ const getIndexOfNextLogObject = (logObjs) => {
 
     This method is O(n) time complexity where n is the number of log sources.
   */
-  logObjs.forEach((obj, index) => {
-    if (!obj.nextLog) { return; }
+  nextLogs.forEach((log, index) => {
+    if (!log) { return; }
 
-    if (nextIndex === null || obj.nextLog.date < logObjs[nextIndex].nextLog.date) {
+    if (nextIndex === null || log.date < nextLogs[nextIndex].date) {
       nextIndex = index;
     }
   });
@@ -38,43 +23,12 @@ const getIndexOfNextLogObject = (logObjs) => {
   return nextIndex;
 }
 
-const updateLogObject = async (logObj) => {
-  if (!logObj.nextLogsPromises || logObj.nextLogsPromises.length === 0) {
-    logObj.nextLog = null
-    return;
-  }
-
-  const nextLogPromise = logObj.nextLogsPromises.shift();
-  logObj.nextLog = await nextLogPromise;
-
-  if (logObj.nextLog) {
-    fillNextLogsArray(logObj.source, logObj.nextLogsPromises);
-  }
-
-  return;
-}
-
-const populateNextLogs = async (logObjs) => {
-  const nextLogPromises = logObjs.map((logObj) => {
-    return updateLogObject(logObj).then(() => logObj.nextLog);
-  });
-
-  await Promise.all(nextLogPromises);
-}
-
-
-const logsRemain = (logObjs) => {
-  return logObjs.some((obj) => !!obj.nextLog);
-}
-
-
 module.exports = async (logSources, printer) => {
   // Similar to synchronous solution, create object array to hold sources and next logs
   const logsObjArray = logSources.map((source) => {
     return {
       source: source,
-      nextLog: null,
-      nextLogsPromises: fillNextLogsArray(source, []) // Array of promises. We are attempting to read ahead to give the async logs time to populate
+      nextLogPromise: source.popAsync(),
     }
   });
 
@@ -82,21 +36,28 @@ module.exports = async (logSources, printer) => {
     /*
       We cannot make any assessment of log ordering until we have waited for
       all sources to return at least 1 result (even if that result indicates the log is drained)
-      We must block execution until all the nextLog values are resolved
-    */
-    await populateNextLogs(logsObjArray);
+      We must block execution until all the nextLog values are resolved.
 
-    // Now this problem reduces to the synchonous case since we should have the next log for
-    // each source
-    const nextLogIndex = getIndexOfNextLogObject(logsObjArray);
+      This is a performance bottleneck.
+    */
+    const nextLogsPromises = logsObjArray.map((logObj) => logObj.nextLogPromise);
+    /*
+      There is a design flaw here in that we are creating a new array
+      that is not tied to the original object directly. We are relying on
+      #map() and Promise.all to maintain insertion ordering.
+    */
+    const nextLogs = await Promise.all(nextLogsPromises);
+
+    // Now this problem reduces to the synchonous case since we
+    // should have the next log for each source
+    const nextLogIndex = getIndexOfNextLogObject(nextLogs);
 
     if (nextLogIndex === null) { break; }
 
-    printer.print(logsObjArray[nextLogIndex].nextLog);
+    printer.print(nextLogs[nextLogIndex]);
 
-    updateLogObject(logsObjArray[nextLogIndex])
-
-  } while(logsRemain(logsObjArray))
+    logsObjArray[nextLogIndex].nextLogPromise = logsObjArray[nextLogIndex].source.popAsync();
+  } while(true)
 
   printer.done();
 
